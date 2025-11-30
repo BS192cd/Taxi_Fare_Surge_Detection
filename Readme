@@ -1,35 +1,93 @@
-NYC Taxi Fare Surge & Anomaly Detection System
+# NYC Taxi Fare Surge & Anomaly Detection System
 
-![Python](https://img.shields.io/badge/Python-3.9-blue)
-![Sklearn](https://img.shields.io/badge/Sklearn-RandomForest-orange)
-![Flask](https://img.shields.io/badge/Flask-Microservice-green)
-![Docker](https://img.shields.io/badge/Docker-Containerized-blue)
+## Project Overview
 
-Executive Summary
-This project implements a real-time machine learning pipeline to:
-1.  Predict Fair Fares: Uses Random Forest to establish a baseline price for NYC taxi trips ($R^2 \approx 0.88$, RMSE $\approx \$2.83$).
-2.  Detect Fraud: Identifies anomalous surge pricing using Isolation Forest with 95% Precision.
-3.  Deploy: Serves predictions via a Dockerized Flask microservice engineered for high throughput (<200ms latency).
+This repository hosts a real-time machine learning system designed to bring transparency to ride-hailing pricing. The system serves two primary functions: establishing a "fair fare" benchmark for NYC taxi trips and detecting anomalous surge pricing patterns indicative of system errors or fraudulent overcharges.
 
-Architecture
-- Training: Hybrid data generation strategy to validate precision against synthetic ground-truth anomalies (GPS spoofing simulations).
-- Inference: Models are serialized and loaded globally in Flask to minimize per-request overhead.
-- Scaling: Uses `Gunicorn` with 4 workers to handle concurrent request loads (tested up to 10k req/min).
+The solution is architected as a high-throughput microservice, capable of handling enterprise-level traffic loads with minimal latency.
 
-How to Run
+## Key Performance Metrics
 
-     1. The Analysis (Notebook)
-Open `NYC_Taxi_Analysis.ipynb` to view the full EDA, Model Training, and Sensitivity Analysis.
+| Metric | Performance | Description |
+| :--- | :--- | :--- |
+| **Model Accuracy ($R^2$)** | **0.88** | [cite\_start]Random Forest Regressor on 200k+ trip records[cite: 68]. |
+| **Prediction Error (RMSE)** | **$2.83** | [cite\_start]Average deviation from actual metered fare[cite: 68]. |
+| **Anomaly Precision** | **95%** | [cite\_start]Isolation Forest performance in identifying fraudulent surges[cite: 69]. |
+| **Service Latency** | **\<200ms** | [cite\_start]Average response time per API request[cite: 70]. |
+| **Throughput** | **10k+ RPM** | [cite\_start]Load-tested request handling capacity[cite: 70]. |
 
-     2. The Microservice (Docker)
-To run the prediction API locally:
+## Technical Architecture
+
+### 1\. Machine Learning Pipeline
+
+  * **Fair Fare Regression:** Utilizes a Random Forest algorithm trained on historical NYC taxi data (distance, time of day, day of week) to predict standard metering.
+  * **Anomaly Detection:** Implements an Isolation Forest algorithm to flag fare quotes that deviate significantly from the predicted baseline ($>3\sigma$), effectively identifying predatory surge pricing or GPS spoofing attempts.
+  * **Data Strategy:** Training involved a hybrid approach using real historical data and synthetic anomaly generation to validate the precision of the fraud detection module.
+
+### 2\. Microservice Deployment
+
+  * **Framework:** The model is served via **Flask**, exposing a RESTful API endpoint (`/predict`).
+  * **Concurrency:** Utilizes **Gunicorn** with 4 worker processes to manage concurrent requests and prevent blocking during inference.
+  * **Containerization:** The entire application is Dockerized to ensure environment consistency and ease of deployment across cloud platforms.
+
+## Getting Started
+
+### Prerequisites
+
+  * Docker Engine installed locally.
+  * Python 3.9+ (if running without Docker).
+
+### Exploratory Analysis
+
+Access `NYC_Taxi_Analysis.ipynb` to review the complete data science workflow, including:
+
+  * Exploratory Data Analysis (EDA) on trip density and pricing trends.
+  * Feature Engineering and Model Training logic.
+  * Sensitivity Analysis of the surge detection thresholds.
+
+### Deployment Instructions
+
+To build and launch the containerized service locally:
 
 ```bash
-cd app
+# 1. Build the Docker image
 docker build -t taxi-surge-api .
-docker run -p 5000:5000 taxi-surge-api
 
-API Usage
+# 2. Run the container on Port 5000
+docker run -p 5000:5000 taxi-surge-api
+```
+
+## API Documentation
+
+**Endpoint:** `POST /predict`
+
+The service accepts a JSON payload containing trip details and returns the fair fare estimate along with an anomaly flag.
+
+### Request Example
+
+```bash
 curl -X POST http://localhost:5000/predict \
      -H "Content-Type: application/json" \
-     -d '{"trip_distance": 2.5, "hour": 17, "day_of_week": 1, "passenger_count": 1, "quoted_price": 50.0}'
+     -d '{
+           "trip_distance": 2.5,
+           "hour": 17,
+           "day_of_week": 1,
+           "passenger_count": 1,
+           "quoted_price": 50.0
+         }'
+```
+
+### Response Schema
+
+```json
+{
+    "predicted_fair_fare": 18.50,
+    "is_anomaly": true,
+    "anomaly_score": -0.75,
+    "message": "Potential surge pricing detected."
+}
+```
+
+## License
+
+Distributed under the MIT License. See `LICENSE` for more information.
