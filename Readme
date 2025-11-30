@@ -1,0 +1,35 @@
+NYC Taxi Fare Surge & Anomaly Detection System
+
+![Python](https://img.shields.io/badge/Python-3.9-blue)
+![Sklearn](https://img.shields.io/badge/Sklearn-RandomForest-orange)
+![Flask](https://img.shields.io/badge/Flask-Microservice-green)
+![Docker](https://img.shields.io/badge/Docker-Containerized-blue)
+
+Executive Summary
+This project implements a real-time machine learning pipeline to:
+1.  Predict Fair Fares: Uses Random Forest to establish a baseline price for NYC taxi trips ($R^2 \approx 0.88$, RMSE $\approx \$2.83$).
+2.  Detect Fraud: Identifies anomalous surge pricing using Isolation Forest with 95% Precision.
+3.  Deploy: Serves predictions via a Dockerized Flask microservice engineered for high throughput (<200ms latency).
+
+Architecture
+- Training: Hybrid data generation strategy to validate precision against synthetic ground-truth anomalies (GPS spoofing simulations).
+- Inference: Models are serialized and loaded globally in Flask to minimize per-request overhead.
+- Scaling: Uses `Gunicorn` with 4 workers to handle concurrent request loads (tested up to 10k req/min).
+
+How to Run
+
+     1. The Analysis (Notebook)
+Open `NYC_Taxi_Analysis.ipynb` to view the full EDA, Model Training, and Sensitivity Analysis.
+
+     2. The Microservice (Docker)
+To run the prediction API locally:
+
+```bash
+cd app
+docker build -t taxi-surge-api .
+docker run -p 5000:5000 taxi-surge-api
+
+API Usage
+curl -X POST http://localhost:5000/predict \
+     -H "Content-Type: application/json" \
+     -d '{"trip_distance": 2.5, "hour": 17, "day_of_week": 1, "passenger_count": 1, "quoted_price": 50.0}'
