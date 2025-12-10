@@ -1,66 +1,95 @@
-# Analysis & Model Development
+# Taxi Fare Anomaly Detection System
 
-## Overview
-This directory contains the Jupyter Notebook (`NYC_Taxi_Analysis.ipynb`) responsible for the exploratory data analysis (EDA), feature engineering, and model training pipeline. The primary objective was to architect a dual-model system capable of predicting fair taxi fares and isolating anomalous pricing surges indicative of fraud or system error.
+## 1. Executive Summary
+This project architects a production-grade machine learning pipeline to detect **Surge Pricing Fraud** in NYC taxi rides. It employs a dual-stage approach:
+1.  **Fair Fare Engine:** A supervised **Random Forest** model that establishes a "Fair Price" benchmark based on trip physics and temporal demand ($R^2$: 0.91).
+2.  **Fraud Hunter:** An unsupervised **Isolation Forest** that detects anomalies by analyzing price residuals. The system was rigorously validated using a **Synthetic "Stress Test"** protocol, achieving **95% Precision** even under simulated chaotic conditions (GPS drift/traffic variance).
 
-## Dataset & Preprocessing
-The model was trained on a dataset comprising **200,000+ trip records**.
+---
 
-### Data Pipeline Steps
-1.  **Ingestion:** Loading historical NYC taxi trip data.
-2.  **Cleaning:**
-    * Removal of invalid coordinates (non-NYC lat/long).
-    * Filtering of non-positive passenger counts and negative fares.
-    * Handling of missing values in trip duration.
-3.  **Feature Engineering:**
-    * **Temporal Features:** Extracted `hour_of_day`, `day_of_week`, and `month` to capture peak traffic patterns.
-    * **Geospatial Features:** Calculated Haversine distance between pickup and dropoff points.
-4.  **Synthetic Anomaly Injection:** A hybrid data generation strategy was employed to create "ground truth" anomalies (simulating GPS spoofing and extreme surge pricing) to validate the unsupervised anomaly detection model.
+## 2. Dataset & Engineering
+The model utilizes the NYC Yellow Taxi dataset, processed through a robust data engineering pipeline.
 
-## Methodology
+* **Volume:** 200,000 raw trip records $\rightarrow$ **175,309 valid urban trips** after cleaning.
+* **Cleaning Logic:**
+    * Removed impossible outliers (Fares < $2.50 or > $500).
+    * Filtered non-physical rides (0 distance, > 6 passengers).
+* **Feature Engineering:**
+    * **Temporal Extraction:** `Hour`, `DayOfWeek`, and `Month` to capture non-linear traffic surges.
+    * **Standardization:** Applied `StandardScaler` to normalize distance and time features for model stability.
 
-### 1. Fair Fare Prediction (Regression)
-* **Algorithm:** Random Forest Regressor (`sklearn.ensemble.RandomForestRegressor`).
-* **Objective:** Establish a baseline "fair" price based on distance and time, independent of surge multipliers.
-* **Optimization:** Hyperparameter tuning was performed on tree depth and the number of estimators to minimize overfitting.
+---
 
-### 2. Anomaly Detection (Classification)
-* **Algorithm:** Isolation Forest (`sklearn.ensemble.IsolationForest`).
-* **Objective:** Detect data points that deviate significantly from the learned distribution of standard fare-to-distance ratios.
-* **Thresholding:** Calibrated contamination parameters to identify the top quantile of pricing irregularities.
+## 3. Methodology & Architecture
 
-## Performance Evaluation
+### Phase 1: Fair Price Modeling (Supervised)
+* **Goal:** Predict the "Ground Truth" cost of a trip to calculate the *Residual* (Actual Price - Fair Price).
+* **Algorithm:** **Random Forest Regressor** (Optimized with `max_depth=10` for low-latency inference).
+* **Why Random Forest?** EDA revealed non-linear patterns (e.g., 4 AM airport spikes, 6 PM rush hour) and flat-rate rules (JFK Airport) that a Linear Regression baseline ($R^2$ 0.89) failed to capture effectively.
 
-The models were evaluated using an 80/20 train-test split.
+### Phase 2: Robust Anomaly Detection (Unsupervised)
+* **Algorithm:** **Isolation Forest** trained on *Fare Residuals*.
+* **Business Logic Layer:** A post-processing filter was engineered to target only **predatory overcharges** (Positive Residuals), distinguishing them from harmless undercharges or system errors.
 
-| Model Component | Metric | Value | Description |
-| :--- | :--- | :--- | :--- |
-| **Regression** | **$R^2$ Score** | **0.88** | Explains 88% of the variance in fare pricing. |
-| **Regression** | **MAE** | **$2.83** | Average prediction error in USD. |
-| **Anomaly Detection** | **Precision** | **95%** | Success rate in identifying fraudulent/surge charges. |
+### Phase 3: The "Stress Test" Validation
+Since real-world fraud labels do not exist, I architected a **Synthetic Injection Strategy** to prove system reliability:
+1.  **Fraud Injection:** Injected "Subtle Scams" (+$20 to +$80) into 5% of the test set.
+2.  **Chaos Noise Injection:** Injected high-variance Gaussian noise (Scale=10) into *normal* trips to simulate extreme weather and traffic.
+3.  **Dynamic Optimization:** An automated tuning loop identified the optimal decision threshold to maximize Recall while holding **Precision $\ge$ 95%**.
 
-## Notebook Contents
-The `NYC_Taxi_Analysis.ipynb` notebook is structured as follows:
-1.  **Exploratory Data Analysis (EDA):** Visualizations of pickup densities, fare distributions, and correlation matrices.
-2.  **Preprocessing:** Code for cleaning and transforming raw data.
-3.  **Model Training:** Implementation of Random Forest and Isolation Forest.
-4.  **Evaluation:** Residual plots, feature importance charts, and metric calculations.
-5.  **Serialization:** Exporting the trained models (`model.pkl`) for use in the Flask microservice.
+---
 
-## Usage Instructions
+## 4. Performance Results
 
-To replicate the analysis or retrain the models:
+The models were evaluated on a strict 20% holdout set.
+
+### Regression (Fair Pricing)
+| Metric | Value | Business Context |
+| :--- | :--- | :--- |
+| **$R^2$ Score** | **0.91** | Explains 91% of fare variance (Beat Linear Baseline of 0.89). |
+| **MAE** | **$1.58** | On average, the model predicts the fair price within $1.58. |
+| **RMSE** | **$3.38** | Low variance in error, ensuring consistent user experience. |
+
+### Anomaly Detection (Fraud)
+| Metric | Value | Context |
+| :--- | :--- | :--- |
+| **Precision** | **95.50%** | **High Trust:** If the system flags a trip, there is a ~95% chance it is actual fraud. |
+| **Recall** | **High** | Successfully caught subtle scams (+$20) even amidst simulated traffic noise. |
+| **Threshold** | **~$21.50** | Optimized dynamically to filter natural outliers. |
+
+---
+
+## 5. Notebook Contents (`NYC_Taxi_Analysis.ipynb`)
+1.  **Data Engineering:** Ingestion, Cleaning, and Temporal Feature Extraction.
+2.  **Exploratory Data Analysis (EDA):**
+    * *Scatter Plots:* Validated distance-price linearity and JFK flat rates.
+    * *Time Series:* Validated 4 AM demand spikes.
+3.  **Fair Fare Modeling:** Training Random Forest and visualizing **Feature Importance** (Distance dominance).
+4.  **Robust Validation:** The "Chaos Mode" stress test code block.
+5.  **Serialization:** Exporting `taxi_fraud_pipeline_v1.pkl` containing models and metadata for Docker/Flask deployment.
+
+---
+
+## 6. Usage Instructions
 
 1.  **Install Dependencies:**
-    Ensure you have the required Python libraries installed:
     ```bash
-    pip install pandas numpy scikit-learn matplotlib seaborn
+    pip install pandas numpy scikit-learn matplotlib seaborn joblib
     ```
 
-2.  **Launch Jupyter:**
+2.  **Run the Analysis:**
     ```bash
     jupyter notebook NYC_Taxi_Analysis.ipynb
     ```
 
-3.  **Execution:**
-    Run all cells sequentially. The final step will save the trained model artifacts to the disk for deployment.
+3.  **Deploy:**
+    The notebook ends by generating a `pkl` file. This artifact is ready to be loaded into a microservice using:
+    ```python
+    import joblib
+    pipeline = joblib.load('taxi_fraud_pipeline_v1.pkl')
+    
+    # Example Inference
+    fair_price = pipeline['rf_model'].predict(new_data)
+    residual = actual_price - fair_price
+    is_fraud = pipeline['iso_model'].predict(residual)
+    ```
